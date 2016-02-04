@@ -11,21 +11,27 @@ import json
 
 
 class MacDeviceScannerMatcher(object):
-    def __init__(self, db_fname='mac.db', ip_network='192.168.1.0/24',
-                 recreate=False, arp_bin='/usr/bin/arp'):
+    def __init__(self, db_fname, arp_bin, ping_bin, ip_network='192.168.1.0/24',
+                 recreate=False, own_ip_address=None, own_mac_address='self'):
         self.db_fname = db_fname
         self.mac_org_match = mac_org.MacOrgMatch()
+        self.own_ip_address = own_ip_address
+        self.own_mac_address = own_mac_address
 
         if not os.path.exists(arp_bin):
             print('Couldn\'t find arp executable, scanning won\'t work')
-            print('    which probably means this tool will be pretty useless')
+            print(' which probably means this tool will be pretty useless')
             self.arp_bin = None
         else:
             self.arp_bin = arp_bin
 
-        if not ip_network:
-            print('No ip_network set, can\'t scan network')
-            print('    which probably means this tool will be pretty useless')
+        if not os.path.exists(ping_bin):
+            print('Couldn\'t find ping executable, scanning won\'t work at all')
+            print(' which probably means this tool will be pretty useless')
+            self.ping_bin = None
+        else:
+            self.ping_bin = ping_bin
+
         self.ip_network = ip_network
 
         if recreate:
@@ -86,7 +92,7 @@ class MacDeviceScannerMatcher(object):
             ip = job_q.get()
             if not ip:
                 break
-            result = subprocess.call(['ping', '-c1', ip],
+            result = subprocess.call([self.ping_bin, '-c1', ip],
                                      stdout=DEVNULL,
                                      stderr=DEVNULL)
             if result == 0:
@@ -122,7 +128,14 @@ class MacDeviceScannerMatcher(object):
             return None
         devices = []
         for ip in ip_list:
-            p = subprocess.Popen(['arp', '-e', ip],
+            if ip == self.own_ip_address:
+                device = {
+                    'ip': ip,
+                    'mac_hex_str': self.own_mac_address,
+                    'mac_int': mac_org.hex_str_to_int(self.own_mac_address),
+                }
+                devices.append(device)
+            p = subprocess.Popen([self.arp_bin, '-e', ip],
                                  stdout=subprocess.PIPE)
             output, err = p.communicate()
             result = output.decode('utf-8').split('\n')
@@ -172,6 +185,7 @@ class MacDeviceScannerMatcher(object):
 
 if __name__ == '__main__':
     import argparse
+    import settings
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-u', '--update', action='store_true',
@@ -186,7 +200,7 @@ if __name__ == '__main__':
         help='Don\'t pretty-print the JSON output'
     )
     parser.add_argument(
-        '-n', '--network', type=str, default='192.168.1.0/24',
+        '-n', '--network', type=str,
         help='network to scan, use CIDR format, default 192.168.1.0/24'
     )
     parser.add_argument(
@@ -226,7 +240,42 @@ if __name__ == '__main__':
     if args.airodump:
         print('Airodump is not implemented yet, not attempting')
 
-    macscan = MacDeviceScannerMatcher(ip_network=args.network)
+    if args.network:
+        ip_network = args.network
+    elif hasattr(settings, 'IP_NETWORK'):
+        ip_network = settings.IP_NETWORK
+    else:
+        ip_network = '192.168.1.0/24'
+
+    if hasattr(settings, 'ARP_BIN'):
+        arp_bin = settings.ARP_BIN
+    else:
+        arp_bin = '/usr/bin/arp'
+
+    if hasattr(settings, 'MAC_DB_FNAME'):
+        mac_db_fname = settings.MAC_DB_FNAME
+    else:
+        mac_db_fname = 'mac.db'
+
+    if hasattr(settings, 'PING_BIN'):
+        ping_bin = settings.PING_BIN
+    else:
+        ping_bin = '/bin/ping'
+
+    if hasattr(settings, 'OWN_IP_ADDRESS'):
+        own_ip_address = settings.OWN_IP_ADDRESS
+    else:
+        own_ip_address = None
+
+    if hasattr(settings, 'OWN_MAC_ADDRESS'):
+        own_mac_address = settings.OWN_MAC_ADDRESS
+    else:
+        own_mac_address = None
+
+    macscan = MacDeviceScannerMatcher(mac_db_fname, arp_bin, ping_bin,
+                                      ip_network,
+                                      own_ip_address=own_ip_address,
+                                      own_mac_address=own_mac_address)
     if args.update:
         macscan.update_who_is_here()
     if args.show:

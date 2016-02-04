@@ -1,0 +1,8 @@
+__pycache__/*
+*.pyc
+settings.py
+venv/
+*.db
+old_mal.txt
+old_mam.txt
+old_mas.txt

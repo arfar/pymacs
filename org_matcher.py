@@ -140,7 +140,6 @@ class MacOrgMatch(object):
         """
         If it's an MA-L Address block, it'll have the format:
 # noqa
-import blah
   OUI/MA-L			Organization
   company_id			Organization
                                 Address
@@ -188,9 +187,6 @@ import blah
         url = ''.join([web_addr_prefix, web_addr_suffix])
         urllib.request.urlretrieve(url, fname)
 
-    """
-    Externally type facing functions here
-    """
     def update_db(self, files=None):
         mal_web_addr = 'oui/oui.txt'
         mam_web_addr = 'oui28/mam.txt'
@@ -221,7 +217,7 @@ import blah
             os.renames(mac_list_files_suffix[mac_file],
                        ''.join(['old_', mac_list_files_suffix[mac_file]]))
 
-    def search_by_mac_address_int(self, mac_address):
+    def search_by_mac_address_int(self, mac_address: int):
         """
         mac_address must be int
         returns organisation and address of mac address owner
@@ -259,3 +255,5 @@ if __name__ == '__main__':
                 print('\t{}'.format(
                     org_info['org_addr'].replace('\n', '\n\t')
                 ))
+        else:
+            print('Failed to find an organisation matching {}'.format(sys.argv[1]))
