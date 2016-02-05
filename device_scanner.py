@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+"""
+Just does scanning, no database stuff
+"""
 
-import sqlite3
 import org_matcher as mac_org
 import multiprocessing
 import subprocess
@@ -11,9 +13,8 @@ import json
 
 
 class MacDeviceScannerMatcher(object):
-    def __init__(self, db_fname, arp_bin, ping_bin, ip_network='192.168.1.0/24',
+    def __init__(self, arp_bin, ping_bin, ip_network='192.168.1.0/24',
                  recreate=False, own_ip_address=None, own_mac_address='self'):
-        self.db_fname = db_fname
         self.mac_org_match = mac_org.MacOrgMatch()
         self.own_ip_address = own_ip_address
         self.own_mac_address = own_mac_address
@@ -33,56 +34,6 @@ class MacDeviceScannerMatcher(object):
             self.ping_bin = ping_bin
 
         self.ip_network = ip_network
-
-        if recreate:
-            self.db_drop_tables()
-        self.db_init_tables()
-
-    def db_init_tables(self):
-        with sqlite3.connect(self.db_fname) as conn:
-            c = conn.cursor()
-            c.execute('''
-            CREATE TABLE IF NOT EXISTS device (
-            dev_mac_addr    INTEGER  PRIMARY KEY  NOT NULL,
-            dev_name        TEXT,
-            dev_last_seen   TIMESTAMP
-            );
-            ''')
-
-    def db_drop_tables(self):
-        with sqlite3.connect(self.db_fname) as conn:
-            c = conn.cursor()
-            c.execute('''
-            DROP TABLE IF EXISTS device;
-            ''')
-
-    def db_add_mac_address(self, mac_entry):
-        with sqlite3.connect(self.db_fname) as conn:
-            c = conn.cursor()
-            c.execute('''
-            INSERT OR REPLACE INTO device
-            (dev_mac_addr, dev_last_seen, dev_name)
-            VALUES (?, ?,
-                (SELECT dev_name FROM device WHERE dev_mac_addr = ?)
-            );
-            ''', (mac_entry['mac_int'], mac_entry['date'],
-                  mac_entry['mac_int'],))
-            c.execute('''
-            SELECT * FROM device WHERE dev_mac_addr = ?;
-            ''', (mac_entry['mac_int'], ))
-            dev = c.fetchone()
-        return dev
-
-    def db_add_device_name(self, mac_addr, dev_name):
-        with sqlite3.connect(self.db_fname) as conn:
-            c = conn.cursor()
-            c.execute('''
-            INSERT OR REPLACE INTO device
-            (dev_mac_addr, dev_name, dev_last_seen)
-            VALUES (?, ?,
-                (SELECT dev_last_seen FROM device WHERE dev_mac_addr = ?)
-            );
-            ''', (mac_addr, dev_name, mac_addr, ))
 
     def _pinger(self, job_q, results_q):
         # Modified from:
@@ -158,29 +109,14 @@ class MacDeviceScannerMatcher(object):
         devices = self.scan_macs()
         for device in devices:
             device['date'] = datetime.datetime.now()
-            dev_in_db = macscan.db_add_mac_address(device)
-            if dev_in_db[1]:
-                device['name'] = dev_in_db[1]
-        else:
-            return devices
+        return devices
 
-    def update_who_is_here(self):
-        devices = self.scan_macs()
-        for device in devices:
-            device['date'] = datetime.datetime.now()
-            macscan.db_add_mac_address(device)
-
-    def update_name_on_mac_device(self, mac_addr, name):
-        if type(mac_addr) is str:
-            mac_addr = mac_org.hex_str_to_int(mac_addr)
-        self.db_add_device_name(mac_addr, name)
-
-    def match_mac_addresses_to_orgs(self, device_list):
-        for device in device_list:
-            device['org'] = self.mac_org_match.search_by_mac_address_int(
-                device['mac_int']
-            )
-        return device_list
+def match_mac_addresses_to_orgs(self, device_list):
+    for device in device_list:
+        device['org'] = mac_org.search_by_mac_address_int(
+            device['mac_int']
+        )
+    return device_list
 
 
 if __name__ == '__main__':
@@ -188,12 +124,8 @@ if __name__ == '__main__':
     import settings
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '-u', '--update', action='store_true',
-        help='Scan network and update db'
-    )
-    parser.add_argument(
         '-s', '--show', action='store_true',
-        help='Scan network, update db and return whos connected as a JSON'
+        help='Scan network and print found devices in JSON format'
     )
     parser.add_argument(
         '-z', '--ugly', action='store_true',
@@ -204,20 +136,6 @@ if __name__ == '__main__':
         help='network to scan, use CIDR format, default 192.168.1.0/24'
     )
     parser.add_argument(
-        '-a', '--add_name', type=str, nargs=2,
-        metavar=('MAC_ADDRESS', 'NAME'),
-        help='Add/update name attached to a mac address, '
-             'use \'null\' to remove'
-    )
-    parser.add_argument(
-        '-o', '--orgs', action='store_true',
-        help='Add organisation data'
-    )
-    parser.add_argument(
-        '-d', '--dump', action='store_true',
-        help='Just dump out the database'
-    )
-    parser.add_argument(
         '-p', '--ping', action='store_true',
         help='Use the ping-scanning method'
     )
@@ -226,16 +144,6 @@ if __name__ == '__main__':
         help='Use the airodump method. NOT IMPLEMENTED YET'
     )
     args = parser.parse_args()
-
-    def printer(args, devices):
-        if args.orgs:
-            devices = macscan.match_mac_addresses_to_orgs(devices)
-        for device in devices:
-            device['date'] = device['date'].isoformat()
-        if not args.ugly:
-            print(json.dumps(devices, sort_keys=True, indent=4))
-        else:
-            print(json.dumps(devices))
 
     if args.airodump:
         print('Airodump is not implemented yet, not attempting')
@@ -252,11 +160,6 @@ if __name__ == '__main__':
     else:
         arp_bin = '/usr/bin/arp'
 
-    if hasattr(settings, 'MAC_DB_FNAME'):
-        mac_db_fname = settings.MAC_DB_FNAME
-    else:
-        mac_db_fname = 'mac.db'
-
     if hasattr(settings, 'PING_BIN'):
         ping_bin = settings.PING_BIN
     else:
@@ -272,19 +175,20 @@ if __name__ == '__main__':
     else:
         own_mac_address = None
 
-    macscan = MacDeviceScannerMatcher(mac_db_fname, arp_bin, ping_bin,
-                                      ip_network,
+    macscan = MacDeviceScannerMatcher(arp_bin, ping_bin, ip_network,
                                       own_ip_address=own_ip_address,
                                       own_mac_address=own_mac_address)
-    if args.update:
-        macscan.update_who_is_here()
+    def printer(args, devices):
+        if args.orgs:
+            devices = macscan.match_mac_addresses_to_orgs(devices)
+        for device in devices:
+            # to make it all pretty for JSON stuff
+            device['date'] = device['date'].isoformat()
+        if not args.ugly:
+            print(json.dumps(devices, sort_keys=True, indent=4))
+        else:
+            print(json.dumps(devices))
+
     if args.show:
         devices = macscan.scan_add_and_update_macs()
         printer(args, devices)
-    if args.add_name:
-        mac_addr = args.add_name[0]
-        name = args.add_name[1]
-        macscan.update_name_on_mac_device(mac_addr, name)
-    if args.dump:
-        all_seen_devices = macscan.dump_db()
-        printer(args, all_seen_devices)
