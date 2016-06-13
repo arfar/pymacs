@@ -196,6 +196,13 @@ def search_by_mac_address_str(hex_mac_address, db_fname):
         hex_str_to_int(hex_mac_address), db_fname
     )
 
+__all__ = [
+    'search_by_mac_address_int',
+    'search_by_mac_address_str',
+    'init_db',
+    'update_db',
+]
+
 if __name__ == '__main__':
     import sys
     try:
