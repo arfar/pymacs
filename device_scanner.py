@@ -1,9 +1,10 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.5
 """
 Just does scanning, no database stuff
 """
 
 import org_matcher as mac_org
+import device_tracker as dev_track
 import multiprocessing
 import subprocess
 import ipaddress
@@ -34,7 +35,7 @@ def ping_scan(ip_addr_network_string, ping_bin):
     results = multiprocessing.Queue()
     pool = [
         multiprocessing.Process(target=_pinger,
-                                args=(jobs, results))
+                                args=(jobs, results, ping_bin))
         for i in range(pool_size)
     ]
     ip_addr_network = ipaddress.ip_network(ip_addr_network_string)
@@ -51,11 +52,12 @@ def ping_scan(ip_addr_network_string, ping_bin):
         pingable_ips.append(results.get())
     return pingable_ips
 
-def arp_ips(ip_list, arp_bin, own_ip_address=None):
+def arp_ips(ip_list, arp_bin, own_mac_address, own_ip_address=None):
     devices = []
     for ip in ip_list:
         if ip == own_ip_address:
             device = {
+                'hostname': 'Yourself',
                 'ip': ip,
                 'mac_hex_str': own_mac_address,
                 'mac_int': mac_org.hex_str_to_int(own_mac_address),
@@ -69,29 +71,42 @@ def arp_ips(ip_list, arp_bin, own_ip_address=None):
             continue
         device = {
             'ip': ip,
+            'hostname': result[1].split()[0],
             'mac_hex_str': result[1].split()[2],
             'mac_int': mac_org.hex_str_to_int(result[1].split()[2]),
         }
         devices.append(device)
     return devices
 
-def scan_macs(ip_network, ping_bin, arp_bin, own_ip_address=None):
+def scan_macs(ip_network, ping_bin, arp_bin, own_mac_address,
+              own_ip_address=None):
     ips = ping_scan(ip_network, ping_bin)
     devices = arp_ips(ips, arp_bin, own_ip_address)
     return devices
 
-def scan_add_and_update_macs():
-    devices = scan_macs()
+def scan_add_and_update_macs(ip_network, ping_bin, arp_bin, own_mac_address,
+                             own_ip_address=None):
+    devices = scan_macs(ip_network, ping_bin, arp_bin, own_ip_address)
     for device in devices:
         device['date'] = datetime.datetime.now()
     return devices
 
-def match_mac_addresses_to_orgs(self, device_list):
+def match_mac_addresses_to_orgs(device_list):
     for device in device_list:
         device['org'] = mac_org.search_by_mac_address_int(
             device['mac_int']
         )
     return device_list
+
+def printer(args, devices):
+    devices = match_mac_addresses_to_orgs(devices)
+    for device in devices:
+        # to make it all pretty for JSON stuff
+        device['date'] = device['date'].isoformat()
+    if args.ugly:
+        print(json.dumps(devices))
+    else:
+        print(json.dumps(devices, sort_keys=True, indent=4))
 
 
 if __name__ == '__main__':
@@ -99,30 +114,25 @@ if __name__ == '__main__':
     import settings
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '-s', '--show', action='store_true',
+        '-c', '--show-current', action='store_true',
         help='Scan network and print found devices in JSON format'
     )
     parser.add_argument(
         '-z', '--ugly', action='store_true',
-        help='Don\'t pretty-print the JSON output'
+        help='Ugly printing'
+    )
+
+    parser.add_argument(
+        '-u', '--update', action='store_true',
+        help=('Scan and update database of mac addresses')
     )
     parser.add_argument(
-        '-n', '--network', type=str,
-        help='network to scan, use CIDR format, default 192.168.1.0/24'
-    )
-    parser.add_argument(
-        '-p', '--ping', action='store_true',
-        help='Use the ping-scanning method'
-    )
-    parser.add_argument(
-        '-i', '--airodump', action='store_true',
-        help='Use the airodump method. NOT IMPLEMENTED YET'
+        '-t', '--trash-database', action='store_true',
+        help=('Drop the time series data')
     )
     args = parser.parse_args()
 
-    if args.network:
-        ip_network = args.network
-    elif hasattr(settings, 'IP_NETWORK'):
+    if hasattr(settings, 'IP_NETWORK'):
         ip_network = settings.IP_NETWORK
     else:
         ip_network = '192.168.1.0/24'
@@ -147,20 +157,16 @@ if __name__ == '__main__':
     else:
         own_mac_address = None
 
-    macscan = MacDeviceScannerMatcher(arp_bin, ping_bin, ip_network,
-                                      own_ip_address=own_ip_address,
-                                      own_mac_address=own_mac_address)
-    def printer(args, devices):
-        if args.orgs:
-            devices = macscan.match_mac_addresses_to_orgs(devices)
-        for device in devices:
-            # to make it all pretty for JSON stuff
-            device['date'] = device['date'].isoformat()
-        if args.ugly:
-            print(json.dumps(devices))
-        else:
-            print(json.dumps(devices, sort_keys=True, indent=4))
+    devices = scan_add_and_update_macs(ip_network, ping_bin, arp_bin,
+                                       own_mac_address, own_ip_address)
 
-    if args.show:
-        devices = macscan.scan_add_and_update_macs()
+    if args.trash_database:
+        dev_track.drop_tables()
+        dev_track.init_tables()
+
+    if args.show_current:
         printer(args, devices)
+
+    if args.update:
+        for device in devices:
+            dev_track.add_device(device)

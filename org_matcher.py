@@ -6,16 +6,21 @@ import urllib.request
 import os
 import csv
 
+try:
+    from settings import MAC_DB_FNAME
+except ImportError:
+    MAC_DB_FNAME = 'mac.db'
+
 
 HEX_CHARS = re.compile(r'[\Wg-zG-Z]')
 
 def hex_str_to_int(hex_str):
     return int(HEX_CHARS.sub('', hex_str), 16)
 
-def init_db(db_fname, recreate=False):
+def init_db(recreate=False):
     if recreate:
-        drop_tables(db_fname)
-    init_tables(db_fname)
+        drop_tables(MAC_DB_FNAME)
+    init_tables(MAC_DB_FNAME)
 
 """
 Database-y stuff first
@@ -98,9 +103,9 @@ def _query_mac_address(mac_address, db_fname):
         ''', (mac_address, mac_address, ))
         return c.fetchmany()
 
-def add_assignment_file_to_db(assignment_class, fname, db_fname):
+def add_assignment_file_to_db(assignment_class, fname):
     assignments = extract(assignment_class, fname)
-    dump_into_db(assignments, db_fname)
+    dump_into_db(assignments, MAC_DB_FNAME)
 
 """
 Non-db functions
@@ -161,7 +166,7 @@ def download_mac_file(suffix, assignment_group):
     filename = ''.join([assignment_group, '.csv'])
     urllib.request.urlretrieve(url, filename)
 
-def update_db(db_fname):
+def update_db():
     assignment_url_suffixes = [
         ('oui/oui.csv', 'mal'),
         ('oui28/mam.csv','mam'),
@@ -173,10 +178,9 @@ def update_db(db_fname):
         add_assignment_file_to_db(
             assignment_group,
             filename,
-            db_fname
         )
 
-def search_by_mac_address_int(mac_address, db_fname):
+def search_by_mac_address_int(mac_address):
     """
     mac_address must be int
     returns organisation and address of mac address owner
@@ -184,17 +188,15 @@ def search_by_mac_address_int(mac_address, db_fname):
     if type(mac_address) != int:
         raise TypeError
     formatted_organisations = []
-    for org in _query_mac_address(mac_address, db_fname):
+    for org in _query_mac_address(mac_address, MAC_DB_FNAME):
         organ_dict = {}
         organ_dict['org_name'] = org[1]
         organ_dict['org_addr'] = org[2]
         formatted_organisations.append(organ_dict)
     return formatted_organisations
 
-def search_by_mac_address_str(hex_mac_address, db_fname):
-    return search_by_mac_address_int(
-        hex_str_to_int(hex_mac_address), db_fname
-    )
+def search_by_mac_address_str(hex_mac_address):
+    return search_by_mac_address_int(hex_str_to_int(hex_mac_address))
 
 __all__ = [
     'search_by_mac_address_int',
@@ -205,20 +207,16 @@ __all__ = [
 
 if __name__ == '__main__':
     import sys
-    try:
-        from settings import MAC_DB_FNAME
-    except ImportError:
-        MAC_DB_FNAME = 'mac.db'
 
     if len(sys.argv) != 2:
         print('Usage: {} [rewrite|upgrade|trash] [MAC]'.format(sys.argv[0]))
         sys.exit(1)
 
     if sys.argv[1][0] in 'rRuUtT':
-        init_db(db_fname=MAC_DB_FNAME, recreate=True)
-        update_db(db_fname=MAC_DB_FNAME)
+        init_db(recreate=True)
+        update_db()
     else:
-        org_infos = search_by_mac_address_str(sys.argv[1], MAC_DB_FNAME)
+        org_infos = search_by_mac_address_str(sys.argv[1])
         if org_infos:
             for org_info in org_infos:
                 print('Organisation:')

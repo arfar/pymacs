@@ -1,51 +1,56 @@
-import 
+import settings
+import sqlite3
 
-        if recreate:
-            self.db_drop_tables()
-        self.db_init_tables()
+def init_tables():
+    with sqlite3.connect(settings.MAC_DB_FNAME) as conn:
+        c = conn.cursor()
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS device (
+        dev_id          INTEGER  PRIMARY KEY  NOT NULL,
+        dev_mac_addr    INTEGER,
+        dev_name        TEXT,
+        UNIQUE (dev_mac_addr) ON CONFLICT IGNORE
+        );
+        ''')
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS timeline (
+        time_id          INTEGER  PRIMARY KEY  NOT NULL,
+        time_datetime    DATE     NOT NULL,
+        time_present     BOOL,
+        time_device_id   INTEGER  NOT NULL,
+        FOREIGN KEY (time_device_id) REFERENCES device(dev_id)
+        );
+        ''')
 
-    def db_init_tables(self):
-        with sqlite3.connect(self.db_fname) as conn:
-            c = conn.cursor()
-            c.execute('''
-            CREATE TABLE IF NOT EXISTS macs_device (
-            dev_mac_addr    INTEGER  PRIMARY KEY  NOT NULL,
-            dev_name        TEXT,
-            dev_last_seen   TIMESTAMP
-            );
-            ''')
+def drop_tables():
+    with sqlite3.connect(settings.MAC_DB_FNAME) as conn:
+        c = conn.cursor()
+        c.execute('''
+        DROP TABLE IF EXISTS device;
+        ''')
+        c.execute('''
+        DROP TABLE IF EXISTS timeline;
+        ''')
 
-    def db_drop_tables(self):
-        with sqlite3.connect(self.db_fname) as conn:
-            c = conn.cursor()
-            c.execute('''
-            DROP TABLE IF EXISTS macs_device;
-            ''')
+def add_device(device):
+    with sqlite3.connect(settings.MAC_DB_FNAME) as conn:
+        c = conn.cursor()
+        c.execute('''
+        INSERT INTO device (dev_mac_addr) VALUES (?);
+        ''', (device['mac_int'],))
 
-    def db_add_mac_address(self, mac_entry):
-        with sqlite3.connect(self.db_fname) as conn:
-            c = conn.cursor()
-            c.execute('''
-            INSERT OR REPLACE INTO macs_device
-            (dev_mac_addr, dev_last_seen, dev_name)
-            VALUES (?, ?,
-                (SELECT dev_name FROM device WHERE dev_mac_addr = ?)
-            );
-            ''', (mac_entry['mac_int'], mac_entry['date'],
-                  mac_entry['mac_int'],))
-            c.execute('''
-            SELECT * FROM device WHERE dev_mac_addr = ?;
-            ''', (mac_entry['mac_int'], ))
-            dev = c.fetchone()
-        return dev
+def add_device_name(mac_addr, dev_name):
+    with sqlite3.connect(settings.MAC_DB_FNAME) as conn:
+        c = conn.cursor()
+        c.execute('''
+        UPDATE device
+        SET dev_name = ? WHERE dev_mac_addr = ?
+        ''', (dev_name, mac_addr))
 
-    def db_add_device_name(self, mac_addr, dev_name):
-        with sqlite3.connect(self.db_fname) as conn:
-            c = conn.cursor()
-            c.execute('''
-            INSERT OR REPLACE INTO macs_device
-            (dev_mac_addr, dev_name, dev_last_seen)
-            VALUES (?, ?,
-                (SELECT dev_last_seen FROM device WHERE dev_mac_addr = ?)
-            );
-            ''', (mac_addr, dev_name, mac_addr, ))
+def all_devices():
+    with sqlite3.connect(settings.MAC_DB_FNAME) as conn:
+        c = conn.cursor()
+        c.execute('''
+        SELECT * FROM device
+        ''')
+        return c.fetchall()
