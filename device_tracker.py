@@ -7,9 +7,10 @@ def init_tables():
         c = conn.cursor()
         c.execute('''
         CREATE TABLE IF NOT EXISTS device (
-        device_id          INTEGER  PRIMARY KEY  NOT NULL,
-        device_mac_addr    INTEGER,
-        device_name        TEXT,
+        device_id             INTEGER  PRIMARY KEY  NOT NULL,
+        device_mac_addr       INTEGER,
+        device_last_hostname  TEXT,
+        device_name           TEXT,
         UNIQUE (device_mac_addr) ON CONFLICT IGNORE
         );
         ''')
@@ -48,10 +49,19 @@ def add_device(device):
     with sqlite3.connect(settings.MAC_DB_FNAME) as conn:
         c = conn.cursor()
         c.execute('''
-        INSERT INTO device (device_mac_addr) VALUES (?);
+        INSERT INTO device (device_mac_addr) VALUES (?)
         ''', (device['mac_int'],))
+        c.execute('''
+        UPDATE device SET device_last_hostname = ?
+            WHERE device_mac_addr = ?
+        ''', (device['hostname'], device['mac_int'],))
 
-def add_device_name(mac_addr, dev_name):
+
+def add_device_name_mac(device_mac_str, dev_name):
+    mac_int = u.hex_str_to_int(device_mac_str)
+    add_device_name_int(mac_int, dev_name)
+
+def add_device_name_int(mac_addr, dev_name):
     with sqlite3.connect(settings.MAC_DB_FNAME) as conn:
         c = conn.cursor()
         c.execute('''
@@ -112,6 +122,18 @@ def get_device_history_name(device_name, datetime_range=()):
         device_id = c.fetchone()
     return _get_device_history_id(device_id, datetime_date)
 
+def get_all_device_history(datetime_range=()):
+    with sqlite3.connect(settings.MAC_DB_FNAME) as conn:
+        c = conn.cursor()
+        c.execute('''
+        SELECT * FROM device
+        ''')
+        all_devices =  c.fetchall()
+    return [
+        (device, _get_device_history_id(device[0]))
+        for device in all_devices
+    ]
+
 def _get_device_history_id(device_id, datetime_range=()):
     with sqlite3.connect(settings.MAC_DB_FNAME, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
         c = conn.cursor()
@@ -139,8 +161,8 @@ def _get_device_history_id(device_id, datetime_range=()):
     device_timeline = []
     for time_stamp in time_stamps:
         if time_stamp in device_present_timestamps:
-            device_timeline.append((time_stamp, True))
+            device_timeline.append((time_stamp[0], True))
         else:
-            device_timeline.append((time_stamp, False))
-
+            device_timeline.append((time_stamp[0], False))
+    device_timeline.sort(key=lambda x: x[0])
     return device_timeline

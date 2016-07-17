@@ -1,7 +1,4 @@
 #!/usr/bin/env python3.5
-"""
-Just does scanning, no database stuff
-"""
 
 import org_matcher as mac_org
 import device_tracker as dev_track
@@ -11,7 +8,6 @@ import subprocess
 import ipaddress
 import os
 import datetime
-import json
 
 
 def _pinger(job_q, results_q, ping_bin):
@@ -90,27 +86,10 @@ def scan_add_and_update_macs(ip_network, ping_bin, arp_bin, own_mac_address,
     devices = scan_macs(ip_network, ping_bin, arp_bin, own_ip_address)
     return devices
 
-def match_mac_addresses_to_orgs(device_list):
-    for device in device_list:
-        device['org'] = mac_org.search_by_mac_address_int(
-            device['mac_int']
-        )
-    return device_list
-
-def printer(args, devices):
-    devices = match_mac_addresses_to_orgs(devices)
-    for device in devices:
-        # to make it all pretty for JSON stuff
-        device['date'] = device['date'].isoformat()
-    if args.ugly:
-        print(json.dumps(devices))
-    else:
-        print(json.dumps(devices, sort_keys=True, indent=4))
-
-
 if __name__ == '__main__':
     import argparse
     import settings
+    import pprint
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '-c', '--show-current', action='store_true',
@@ -123,13 +102,20 @@ if __name__ == '__main__':
 
     parser.add_argument(
         '-u', '--update', action='store_true',
-        help=('Scan and update database of mac addresses')
+        help=('Update database of mac addresses and save time scanned')
     )
     parser.add_argument(
         '-t', '--trash-database', action='store_true',
-        help=('Drop the time series data')
+        help=('Drop the time series data tables')
     )
-
+    parser.add_argument(
+        '-a', '--add-name', nargs=2, metavar=('MAC_ADDR', 'NEW_NAME'),
+        help=('Add name to mac address')
+    )
+    parser.add_argument(
+        '-l', '--list', action='store_true',
+        help=('List all mac addresses in database')
+    )
     parser.add_argument(
         '-m', '--history-mac', action='store',
         help=('Look up history of given mac address')
@@ -166,26 +152,20 @@ if __name__ == '__main__':
     else:
         own_mac_address = None
 
-    if args.show_current or args.update:
-        devices = scan_add_and_update_macs(ip_network, ping_bin, arp_bin,
-                                           own_mac_address, own_ip_address)
-        if args.update:
-            timestamp = datetime.datetime.now()
-
     if args.trash_database:
         dev_track.drop_tables()
         dev_track.init_tables()
 
     if args.update:
+        devices = scan_add_and_update_macs(ip_network, ping_bin, arp_bin,
+                                           own_mac_address, own_ip_address)
+        timestamp = datetime.datetime.now()
         dev_track.add_timestamp(timestamp)
         for device in devices:
             dev_track.add_device(device)
             dev_track.add_device_on_timeline(device, timestamp)
 
-    if args.show_current:
-        printer(args, devices)
-
-    import pprint
+    # TODO - make a better printer
     if args.history_mac:
         history = dev_track.get_device_history_mac_string(args.history_mac)
         pprint.pprint(history)
@@ -193,3 +173,17 @@ if __name__ == '__main__':
     if args.history_name:
         history = dev_track.get_device_history_mac_string(args.history_name)
         pprint.pprint(history)
+
+    if args.add_name:
+        dev_track.add_device_name_mac(*args.add_name)
+
+    if args.list or args.add_name:
+        devices = []
+        for device in dev_track.all_devices():
+            devices.append({
+                'mac_address': u.int_mac_to_hex_mac(device[1]),
+                'last_hostname': device[2],
+                'name': device[3],
+                'organisation': mac_org.search_by_mac_address_int(device[1]),
+            })
+        pprint.pprint(devices)
