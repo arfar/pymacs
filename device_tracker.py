@@ -113,8 +113,6 @@ def get_device_history_name(device_name, datetime_range=()):
     return _get_device_history_id(device_id, datetime_date)
 
 def _get_device_history_id(device_id, datetime_range=()):
-    # TODO - Put more of this logic into the DB call - I'm sure it can
-    #        all/mostly be done within SQL, which means it'll probably be 100x
     with sqlite3.connect(settings.MAC_DB_FNAME, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
         c = conn.cursor()
         if datetime_range:
@@ -127,13 +125,14 @@ def _get_device_history_id(device_id, datetime_range=()):
             ''')
             time_stamps = c.fetchall()
 
-        c.execute('''
-        SELECT time_stamp_datetime FROM
-            time_line JOIN time_stamp
-            ON (time_line.time_line_time_stamp_id = time_stamp.time_stamp_id)
-            WHERE (time_line.time_line_device_id=?)
-        ''', (device_id,))
-        device_present_timestamps = c.fetchall()
+            c.execute('''
+            SELECT time_stamp_datetime FROM
+                time_line JOIN time_stamp
+                ON (time_line.time_line_time_stamp_id = time_stamp.time_stamp_id)
+                WHERE (time_line.time_line_device_id=?)
+            ''', (device_id,))
+            device_present_timestamps = c.fetchall()
+
 
     # TODO - Do this part with the database too - it's probably horifically
     #        inefficient
