@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
 
-import re
 import sqlite3
 import urllib.request
 import os
 import csv
+import my_utils as u
 
 try:
     from settings import MAC_DB_FNAME
 except ImportError:
     MAC_DB_FNAME = 'mac.db'
 
-
-HEX_CHARS = re.compile(r'[\Wg-zG-Z]')
-
-def hex_str_to_int(hex_str):
-    return int(HEX_CHARS.sub('', hex_str), 16)
 
 def init_db(recreate=False):
     if recreate:
@@ -196,7 +191,7 @@ def search_by_mac_address_int(mac_address):
     return formatted_organisations
 
 def search_by_mac_address_str(hex_mac_address):
-    return search_by_mac_address_int(hex_str_to_int(hex_mac_address))
+    return search_by_mac_address_int(u.hex_str_to_int(hex_mac_address))
 
 __all__ = [
     'search_by_mac_address_int',
