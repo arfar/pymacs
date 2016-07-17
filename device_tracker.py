@@ -123,22 +123,25 @@ def _get_device_history_id(device_id, datetime_range=()):
             return []
         else:
             c.execute('''
-            SELECT * FROM time_stamp
+            SELECT time_stamp_datetime FROM time_stamp
             ''')
             time_stamps = c.fetchall()
-        c.execute('''
-        SELECT * FROM time_line WHERE time_line_device_id=?
-        ''', (device_id,))
-        device_timeline_db = c.fetchall()
 
-    # THIS IS TERRIBLY IN EFFICIENT CODE - I JUST WANT TO GET SOMETHING WORKING
-    # FOR THE MOMENT
+        c.execute('''
+        SELECT time_stamp_datetime FROM
+            time_line JOIN time_stamp
+            ON (time_line.time_line_time_stamp_id = time_stamp.time_stamp_id)
+            WHERE (time_line.time_line_device_id=?)
+        ''', (device_id,))
+        device_present_timestamps = c.fetchall()
+
+    # TODO - Do this part with the database too - it's probably horifically
+    #        inefficient
     device_timeline = []
     for time_stamp in time_stamps:
-        for device_db in device_timeline_db:
-            if time_stamp[0] == device_db[2]:
-                device_timeline.append((time_stamp[1], True))
-                break
+        if time_stamp in device_present_timestamps:
+            device_timeline.append((time_stamp, True))
         else:
-            device_timeline.append((time_stamp[1], False))
+            device_timeline.append((time_stamp, False))
+
     return device_timeline

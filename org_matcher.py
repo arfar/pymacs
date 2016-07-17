@@ -203,14 +203,22 @@ __all__ = [
 if __name__ == '__main__':
     import sys
 
-    if len(sys.argv) != 2:
-        print('Usage: {} [rewrite|upgrade|trash] [MAC]'.format(sys.argv[0]))
+    if len(sys.argv) < 2 or len(sys.argv) > 4:
+        print('Usage: {} [rewrite|upgrade|trash|hex_to_string] [MAC]'.format(sys.argv[0]))
         sys.exit(1)
 
     if sys.argv[1][0] in 'rRuUtT':
         init_db(recreate=True)
         update_db()
+    elif sys.argv[1][0] in 'hH':
+        if len(sys.argv) != 3:
+            print('Usage: {} [rewrite|upgrade|trash|hex_to_string] [MAC]'.format(sys.argv[0]))
+            sys.exit(2)
+        print(u.hex_str_to_int(sys.argv[2]))
     else:
+        if len(sys.argv) != 2:
+            print('Usage: {} [rewrite|upgrade|trash|hex_to_string] [MAC]'.format(sys.argv[0]))
+            sys.exit(3)
         org_infos = search_by_mac_address_str(sys.argv[1])
         if org_infos:
             for org_info in org_infos:
